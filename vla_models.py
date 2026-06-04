@@ -81,9 +81,10 @@ class OpenVLAModel(VLAModelBase):
         dtype = torch.bfloat16
 
         load_kwargs = dict(
-            torch_dtype=dtype,
+            dtype=dtype,
             low_cpu_mem_usage=True,
             trust_remote_code=True,
+            attn_implementation="eager",
         )
         if load_in_8bit:
             load_kwargs["load_in_8bit"] = True
