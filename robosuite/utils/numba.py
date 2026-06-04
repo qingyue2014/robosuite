@@ -1,9 +1,10 @@
 """
 Numba utils.
 """
-import numba
-
 import robosuite.macros as macros
+
+if macros.ENABLE_NUMBA:
+    import numba
 
 
 def jit_decorator(func):
