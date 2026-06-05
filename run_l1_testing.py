@@ -152,7 +152,10 @@ def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1
             video_frame = obs.get(video_obs_key, None)
 
             if vla_image is not None:
-                action = model.predict(vla_image, env.task_instruction)
+                if hasattr(model, "predict_from_obs"):
+                    action = model.predict_from_obs(obs, env.task_instruction)
+                else:
+                    action = model.predict(vla_image, env.task_instruction)
             else:
                 action = np.random.uniform(low, high).astype(np.float32)
 
@@ -210,10 +213,20 @@ def main():
                         help="Run only one variant index within each selected env")
     parser.add_argument("--max_variants", type=int, default=None,
                         help="Run at most N variants within each selected env")
-    parser.add_argument("--model",      default="random",  help="Model: random | openvla | pi0")
+    parser.add_argument("--model",      default="random",  help="Model: random | openvla | openvla_oft | pi0")
     parser.add_argument("--device",     default="cuda",    help="Torch device (default: cuda)")
     parser.add_argument("--unnorm_key", default="bridge_orig",
-                        help="OpenVLA unnorm key (default: bridge_orig)")
+                        help="Action unnorm key")
+    parser.add_argument("--oft_checkpoint", default="moojink/openvla-7b-oft-finetuned-libero-spatial",
+                        help="OpenVLA-OFT checkpoint path or HuggingFace repo id")
+    parser.add_argument("--oft_num_images", type=int, default=2,
+                        help="OpenVLA-OFT number of input images (default: 2)")
+    parser.add_argument("--oft_no_proprio", action="store_true",
+                        help="Disable proprio input for OpenVLA-OFT")
+    parser.add_argument("--oft_open_loop_steps", type=int, default=8,
+                        help="OpenVLA-OFT action chunk steps to execute before requerying")
+    parser.add_argument("--oft_no_center_crop", action="store_true",
+                        help="Disable OpenVLA-OFT center crop preprocessing")
     parser.add_argument("--invert_gripper", action="store_true",
                         help="Invert OpenVLA gripper action before passing to robosuite")
     parser.add_argument("--isolate_model_process", action="store_true",
@@ -287,14 +300,30 @@ def main():
 
     # Load model once; shared across all variants
     model_kwargs = {}
-    if args.model == "openvla":
+    model_name = args.model.lower()
+    if model_name == "openvla":
         model_kwargs = {
             "device": args.device,
             "unnorm_key": args.unnorm_key,
             "invert_gripper": args.invert_gripper,
             "isolate_process": args.isolate_model_process,
         }
-    elif args.model in ("pi0", "pi_zero"):
+    elif model_name in ("openvla_oft", "openvla-oft", "oft"):
+        unnorm_key = args.unnorm_key
+        if unnorm_key == "bridge_orig":
+            unnorm_key = "libero_spatial_no_noops"
+        model_kwargs = {
+            "device": args.device,
+            "pretrained_checkpoint": args.oft_checkpoint,
+            "unnorm_key": unnorm_key,
+            "num_images_in_input": args.oft_num_images,
+            "use_proprio": not args.oft_no_proprio,
+            "center_crop": not args.oft_no_center_crop,
+            "num_open_loop_steps": args.oft_open_loop_steps,
+            "invert_gripper": args.invert_gripper,
+            "isolate_process": args.isolate_model_process,
+        }
+    elif model_name in ("pi0", "pi_zero"):
         model_kwargs = {"device": args.device}
     model = load_model(args.model, **model_kwargs)
 
