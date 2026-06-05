@@ -28,8 +28,8 @@ class VLAModelBase(abc.ABC):
             image_rgb: uint8 RGB image, shape (H, W, 3)
             instruction: natural-language task string
         Returns:
-            action: float32 array of shape (7,), values in [-1, 1]
-                    [dx, dy, dz, droll, dpitch, dyaw, gripper]
+            action: float32 array of shape (7,), values in the target
+                    environment's action space.
         """
 
     def reset(self):
@@ -64,18 +64,27 @@ class OpenVLAModel(VLAModelBase):
 
     Model card: https://huggingface.co/openvla/openvla-7b
 
-    Action format: 7-DoF delta end-effector + gripper, range [-1, 1].
+    Action format: 7-DoF delta end-effector + gripper.
     The unnorm_key selects which dataset's action statistics to use for
     de-normalisation. Use "bridge_orig" for table-top pick-and-place tasks
     closest to robosuite's setup. Override via --unnorm_key if needed.
     """
 
-    def __init__(self, device="cuda", unnorm_key="bridge_orig", load_in_8bit=False):
+    def __init__(
+        self,
+        device="cuda",
+        unnorm_key="bridge_orig",
+        load_in_8bit=False,
+        controller_delta_scale=(0.05, 0.05, 0.05, 0.5, 0.5, 0.5),
+        invert_gripper=False,
+    ):
         import torch
         from transformers import AutoModelForVision2Seq, AutoProcessor
 
         self.device = device
         self.unnorm_key = unnorm_key
+        self.controller_delta_scale = np.array(controller_delta_scale, dtype=np.float32)
+        self.invert_gripper = invert_gripper
 
         print(f"[OpenVLA] Loading openvla/openvla-7b on {device} ...")
         dtype = torch.bfloat16
@@ -100,14 +109,30 @@ class OpenVLAModel(VLAModelBase):
         )
         print("[OpenVLA] Model loaded.")
 
+    @staticmethod
+    def _format_prompt(instruction):
+        instruction = instruction.strip()
+        return f"In: What action should the robot take to {instruction}?\nOut:"
+
+    def _to_robosuite_action(self, action):
+        action = np.asarray(action, dtype=np.float32).reshape(-1)
+        if action.shape[0] != 7:
+            raise ValueError(f"Expected OpenVLA action shape (7,), got {action.shape}")
+
+        robosuite_action = np.empty(7, dtype=np.float32)
+        robosuite_action[:6] = action[:6] / self.controller_delta_scale
+        robosuite_action[6] = -action[6] if self.invert_gripper else action[6]
+        return np.clip(robosuite_action, -1.0, 1.0).astype(np.float32)
+
     def predict(self, image_rgb, instruction):
         import torch
         from PIL import Image
 
         pil_image = Image.fromarray(image_rgb)
+        prompt = self._format_prompt(instruction)
         inputs = self.processor(
             images=pil_image,
-            text=instruction,
+            text=prompt,
             return_tensors="pt",
         ).to(self.device, dtype=torch.bfloat16)
 
@@ -117,8 +142,7 @@ class OpenVLAModel(VLAModelBase):
                 unnorm_key=self.unnorm_key,
                 do_sample=False,
             )
-        # action is a numpy array of shape (7,)
-        return np.clip(action, -1.0, 1.0).astype(np.float32)
+        return self._to_robosuite_action(action)
 
 
 # ---------------------------------------------------------------------------

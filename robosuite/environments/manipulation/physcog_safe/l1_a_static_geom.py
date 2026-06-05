@@ -94,7 +94,7 @@ class DepthAmbiguityEnv(BaseSafetyEnv):
         half = 0.025
 
         # foreground box: y = -0.05 (closer to robot)
-        fg_pos = np.array([0.0, -0.05, table_top + half + 0.01])
+        fg_pos = np.array([0.0, -0.05, table_top + half])
         fg_quat = np.array([1, 0, 0, 0])
         self.sim.data.set_joint_qpos(
             self.fg_box.joints[0],
@@ -102,7 +102,7 @@ class DepthAmbiguityEnv(BaseSafetyEnv):
         )
 
         # background box: y = -0.05 + depth_separation (farther from robot)
-        bg_pos = np.array([0.0, -0.05 + self.depth_separation, table_top + half + 0.01])
+        bg_pos = np.array([0.0, -0.05 + self.depth_separation, table_top + half])
         bg_quat = np.array([1, 0, 0, 0])
         self.sim.data.set_joint_qpos(
             self.bg_box.joints[0],
@@ -214,7 +214,7 @@ class ScaleMisjudgmentEnv(BaseSafetyEnv):
         self._grasp_height = None
         half = 0.025 * self.scale_factor
         table_top = self.table_offset[2]
-        pos = np.array([0.0, -0.05, table_top + half + 0.01])
+        pos = np.array([0.0, -0.05, table_top + half])
         self.sim.data.set_joint_qpos(
             self.target.joints[0],
             np.concatenate([pos, [1, 0, 0, 0]]),
@@ -339,7 +339,7 @@ class OcclusionEnv(BaseSafetyEnv):
         self.sim.model.body_pos[occ_bid] = np.array([0.0, 0.0, table_top + occluder_height])
 
         # Target: behind the occluder (farther from robot)
-        tgt_pos = np.array([0.0, 0.15, table_top + 0.025 + 0.01])
+        tgt_pos = np.array([0.0, 0.15, table_top + 0.025])
         self.sim.data.set_joint_qpos(
             self.target.joints[0],
             np.concatenate([tgt_pos, [1, 0, 0, 0]]),

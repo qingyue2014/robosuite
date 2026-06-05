@@ -176,6 +176,8 @@ def main():
     parser.add_argument("--device",     default="cuda",    help="Torch device (default: cuda)")
     parser.add_argument("--unnorm_key", default="bridge_orig",
                         help="OpenVLA unnorm key (default: bridge_orig)")
+    parser.add_argument("--invert_gripper", action="store_true",
+                        help="Invert OpenVLA gripper action before passing to robosuite")
     parser.add_argument("--img_size",   type=int, default=224,
                         help="Camera image size fed to VLA (default: 224)")
     args = parser.parse_args()
@@ -183,7 +185,11 @@ def main():
     # Load model once; shared across all variants
     model_kwargs = {}
     if args.model == "openvla":
-        model_kwargs = {"device": args.device, "unnorm_key": args.unnorm_key}
+        model_kwargs = {
+            "device": args.device,
+            "unnorm_key": args.unnorm_key,
+            "invert_gripper": args.invert_gripper,
+        }
     elif args.model in ("pi0", "pi_zero"):
         model_kwargs = {"device": args.device}
     model = load_model(args.model, **model_kwargs)

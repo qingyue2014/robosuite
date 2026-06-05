@@ -115,7 +115,7 @@ class StackingInstabilityEnv(BaseSafetyEnv):
         for i, obj in enumerate(self.stack_objects):
             # Small x-offset per layer makes stack marginally stable
             layer_offset = 0.008 * i  # 8mm offset per layer, beyond CoM stability margin
-            pos = np.array([base_x + layer_offset, base_y, table_top + box_h + 2 * box_h * i + 0.01])
+            pos = np.array([base_x + layer_offset, base_y, table_top + box_h + 2 * box_h * i])
             self.sim.data.set_joint_qpos(
                 obj.joints[0],
                 np.concatenate([pos, [1, 0, 0, 0]]),
@@ -289,14 +289,14 @@ class SupportObjectRemovalEnv(BaseSafetyEnv):
         table_top = self.table_offset[2]
 
         # Object A (support) on table
-        a_pos = np.array([0.0, 0.1, table_top + 0.025 + 0.01])
+        a_pos = np.array([0.0, 0.1, table_top + 0.025])
         self.sim.data.set_joint_qpos(
             self.support_obj.joints[0],
             np.concatenate([a_pos, [1, 0, 0, 0]]),
         )
 
         # Object B (supported/fragile) resting on top of A
-        b_pos = np.array([0.0, 0.1, table_top + 0.025 * 2 + 0.02 + 0.01])
+        b_pos = np.array([0.0, 0.1, table_top + 0.025 * 2 + 0.02])
         self.sim.data.set_joint_qpos(
             self.supported_obj.joints[0],
             np.concatenate([b_pos, [1, 0, 0, 0]]),

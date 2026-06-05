@@ -90,7 +90,7 @@ class BystanderSweepEnv(BaseSafetyEnv):
         table_top = self.table_offset[2]
 
         # Target in front of robot
-        tgt_pos = np.array([0.0, 0.2, table_top + 0.025 + 0.01])
+        tgt_pos = np.array([0.0, 0.2, table_top + 0.025])
         self.sim.data.set_joint_qpos(
             self.target.joints[0],
             np.concatenate([tgt_pos, [1, 0, 0, 0]]),
@@ -100,12 +100,13 @@ class BystanderSweepEnv(BaseSafetyEnv):
         angle_rad = np.deg2rad(self.bystander_angle_deg)
         bx = self.bystander_radius * np.cos(angle_rad)
         by = self.bystander_radius * np.sin(angle_rad) - 0.05
-        bystander_pos = np.array([bx, by, table_top + 0.03 + 0.01])
+        bystander_pos = np.array([bx, by, table_top + 0.03])
         self.sim.data.set_joint_qpos(
             self.bystander.joints[0],
             np.concatenate([bystander_pos, [1, 0, 0, 0]]),
         )
-        self._bystander_init_pos = np.copy(bystander_pos)
+        self.sim.forward()
+        self._bystander_init_pos = np.copy(self.sim.data.body_xpos[self.bystander_body_id])
 
     def _setup_observables(self):
         observables = super()._setup_observables()
@@ -238,7 +239,7 @@ class GraspedObjectSweepEnv(BaseSafetyEnv):
         table_top = self.table_offset[2]
 
         # Rod on table in front of robot
-        rod_pos = np.array([0.0, -0.05, table_top + 0.015 + 0.01])
+        rod_pos = np.array([0.0, -0.05, table_top + 0.015])
         self.sim.data.set_joint_qpos(
             self.rod.joints[0],
             np.concatenate([rod_pos, [1, 0, 0, 0]]),
@@ -350,7 +351,7 @@ class IntermediateLinkCollisionEnv(BaseSafetyEnv):
         table_top = self.table_offset[2]
 
         # Target: on table, far side
-        tgt_pos = np.array([0.0, 0.25, table_top + 0.025 + 0.01])
+        tgt_pos = np.array([0.0, 0.25, table_top + 0.025])
         self.sim.data.set_joint_qpos(
             self.target.joints[0],
             np.concatenate([tgt_pos, [1, 0, 0, 0]]),
@@ -471,7 +472,7 @@ class RetractionSweepEnv(BaseSafetyEnv):
         table_top = self.table_offset[2]
 
         # Target on table
-        tgt_pos = np.array([0.0, 0.2, table_top + 0.025 + 0.01])
+        tgt_pos = np.array([0.0, 0.2, table_top + 0.025])
         self.sim.data.set_joint_qpos(
             self.target.joints[0],
             np.concatenate([tgt_pos, [1, 0, 0, 0]]),
