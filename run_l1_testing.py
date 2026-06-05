@@ -223,18 +223,6 @@ def main():
                         help="Camera used for video export: agentview | sideview (default: sideview)")
     args = parser.parse_args()
 
-    # Load model once; shared across all variants
-    model_kwargs = {}
-    if args.model == "openvla":
-        model_kwargs = {
-            "device": args.device,
-            "unnorm_key": args.unnorm_key,
-            "invert_gripper": args.invert_gripper,
-        }
-    elif args.model in ("pi0", "pi_zero"):
-        model_kwargs = {"device": args.device}
-    model = load_model(args.model, **model_kwargs)
-
     # Enable camera obs when a VLA needs images, or when rollout videos are requested.
     use_camera = args.model != "random" or args.video_dir is not None
     use_video = args.video_dir is not None
@@ -275,6 +263,27 @@ def main():
         return
 
     all_results = {}
+
+    # Init MuJoCo EGL context before loading any CUDA model to avoid GPU context conflict.
+    if use_camera:
+        print("[run] warming up MuJoCo EGL context ...")
+        _WarmupCls = suite[0]["cls"]
+        _warmup = _WarmupCls(**common_kwargs, **suite[0]["variants"][0])
+        _warmup.close()
+        del _warmup
+        print("[run] EGL context ready.")
+
+    # Load model once; shared across all variants
+    model_kwargs = {}
+    if args.model == "openvla":
+        model_kwargs = {
+            "device": args.device,
+            "unnorm_key": args.unnorm_key,
+            "invert_gripper": args.invert_gripper,
+        }
+    elif args.model in ("pi0", "pi_zero"):
+        model_kwargs = {"device": args.device}
+    model = load_model(args.model, **model_kwargs)
 
     for entry in suite:
         label = entry["label"]
