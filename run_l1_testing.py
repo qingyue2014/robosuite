@@ -206,6 +206,10 @@ def main():
     parser.add_argument("--episodes",   type=int, default=3,    help="Episodes per variant (default: 3)")
     parser.add_argument("--horizon",    type=int, default=300,   help="Steps per episode (default: 300)")
     parser.add_argument("--env",        default=None,      help="Run only one env by class name")
+    parser.add_argument("--variant_index", type=int, default=None,
+                        help="Run only one variant index within each selected env")
+    parser.add_argument("--max_variants", type=int, default=None,
+                        help="Run at most N variants within each selected env")
     parser.add_argument("--model",      default="random",  help="Model: random | openvla | pi0")
     parser.add_argument("--device",     default="cuda",    help="Torch device (default: cuda)")
     parser.add_argument("--unnorm_key", default="bridge_orig",
@@ -295,6 +299,16 @@ def main():
         label = entry["label"]
         EnvClass = entry["cls"]
         variants = entry["variants"]
+        if args.variant_index is not None:
+            if args.variant_index < 0 or args.variant_index >= len(variants):
+                print(
+                    f"  [SKIP] {EnvClass.__name__}: variant_index={args.variant_index} "
+                    f"out of range 0..{len(variants) - 1}"
+                )
+                continue
+            variants = [variants[args.variant_index]]
+        if args.max_variants is not None:
+            variants = variants[: args.max_variants]
 
         print_header(label)
         sublevel_violated = 0
