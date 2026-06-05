@@ -116,7 +116,8 @@ def _safe_filename(text):
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("_")
 
 
-def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1):
+def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1,
+                video_camera="agentview"):
     """
     Run one episode using the given model.
     Returns (safety_violated, violation_reasons, success).
@@ -140,20 +141,24 @@ def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1
         os.makedirs(os.path.dirname(video_path), exist_ok=True)
         writer = imageio.get_writer(video_path, fps=video_fps, codec="libx264", pixelformat="yuv420p")
 
+    video_obs_key = f"{video_camera}_image"
+
     try:
         for step in range(horizon):
-            # Get image observation (agentview camera, shape H×W×3 uint8)
-            image = obs.get("agentview_image", None)
+            # agentview_image is always used for VLA inference
+            vla_image = obs.get("agentview_image", None)
+            # separate camera obs used for video recording
+            video_frame = obs.get(video_obs_key, None)
 
-            if image is not None:
+            if vla_image is not None:
                 # robosuite returns images flipped vertically (OpenGL convention)
-                image = image[::-1].copy()
-                if writer is not None and step % video_skip == 0:
-                    writer.append_data(image)
-                action = model.predict(image, env.task_instruction)
+                vla_image = vla_image[::-1].copy()
+                action = model.predict(vla_image, env.task_instruction)
             else:
-                # No camera obs available — fall back to random
                 action = np.random.uniform(low, high).astype(np.float32)
+
+            if writer is not None and video_frame is not None and step % video_skip == 0:
+                writer.append_data(video_frame[::-1].copy())
 
             obs, reward, done, info = env.step(action)
             violated = info["safety_violated"]
@@ -162,10 +167,10 @@ def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1
             if done:
                 break
 
-        # Get image observation (agentview camera, shape H×W×3 uint8)
-        image = obs.get("agentview_image", None)
-        if writer is not None and image is not None:
-            writer.append_data(image[::-1].copy())
+        # write last frame
+        video_frame = obs.get(video_obs_key, None)
+        if writer is not None and video_frame is not None:
+            writer.append_data(video_frame[::-1].copy())
     finally:
         if writer is not None:
             writer.close()
@@ -212,6 +217,10 @@ def main():
                         help="Video export FPS (default: 20)")
     parser.add_argument("--video_skip", type=int, default=1,
                         help="Save every Nth frame when exporting video (default: 1)")
+    parser.add_argument("--video_size", type=int, default=512,
+                        help="Video export resolution in pixels (default: 512)")
+    parser.add_argument("--video_camera", default="sideview",
+                        help="Camera used for video export: agentview | sideview (default: sideview)")
     args = parser.parse_args()
 
     # Load model once; shared across all variants
@@ -228,14 +237,28 @@ def main():
 
     # Enable camera obs when a VLA needs images, or when rollout videos are requested.
     use_camera = args.model != "random" or args.video_dir is not None
+    use_video = args.video_dir is not None
+    if use_video and args.video_camera != "agentview":
+        camera_names   = ["agentview", args.video_camera]
+        camera_heights = [args.img_size, args.video_size]
+        camera_widths  = [args.img_size, args.video_size]
+    elif use_video:
+        # video and VLA share agentview; render at video_size, VLA gets full-res image
+        camera_names   = "agentview"
+        camera_heights = args.video_size
+        camera_widths  = args.video_size
+    else:
+        camera_names   = "agentview"
+        camera_heights = args.img_size
+        camera_widths  = args.img_size
     common_kwargs = dict(
         robots=args.robot,
         has_renderer=False,
         has_offscreen_renderer=use_camera,
         use_camera_obs=use_camera,
-        camera_names="agentview",
-        camera_heights=args.img_size,
-        camera_widths=args.img_size,
+        camera_names=camera_names,
+        camera_heights=camera_heights,
+        camera_widths=camera_widths,
         horizon=args.horizon,
         control_freq=20,
         ignore_done=False,
@@ -281,6 +304,7 @@ def main():
                         video_path=video_path,
                         video_fps=args.video_fps,
                         video_skip=args.video_skip,
+                        video_camera=args.video_camera,
                     )
                     if violated:
                         n_violated += 1
