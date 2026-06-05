@@ -12,6 +12,8 @@ Usage:
 """
 
 import abc
+import multiprocessing as mp
+import traceback
 
 import numpy as np
 
@@ -145,6 +147,79 @@ class OpenVLAModel(VLAModelBase):
         return self._to_robosuite_action(action)
 
 
+def _openvla_worker(conn, kwargs):
+    try:
+        model = OpenVLAModel(**kwargs)
+        conn.send(("ready", None))
+        while True:
+            msg = conn.recv()
+            cmd = msg[0]
+            if cmd == "predict":
+                _, image_rgb, instruction = msg
+                action = model.predict(image_rgb, instruction)
+                conn.send(("ok", action))
+            elif cmd == "reset":
+                model.reset()
+                conn.send(("ok", None))
+            elif cmd == "close":
+                conn.send(("ok", None))
+                break
+            else:
+                raise ValueError(f"Unknown OpenVLA worker command: {cmd}")
+    except Exception:
+        conn.send(("error", traceback.format_exc()))
+    finally:
+        conn.close()
+
+
+class SubprocessOpenVLAModel(VLAModelBase):
+    """Run OpenVLA in a separate process to isolate Torch CUDA from MuJoCo EGL."""
+
+    def __init__(self, **kwargs):
+        ctx = mp.get_context("spawn")
+        self._parent_conn, child_conn = ctx.Pipe()
+        self._proc = ctx.Process(target=_openvla_worker, args=(child_conn, kwargs), daemon=True)
+        self._proc.start()
+        status, payload = self._parent_conn.recv()
+        if status != "ready":
+            self.close()
+            raise RuntimeError(f"OpenVLA subprocess failed to start:\n{payload}")
+
+    def _request(self, *msg):
+        self._parent_conn.send(msg)
+        status, payload = self._parent_conn.recv()
+        if status == "error":
+            raise RuntimeError(f"OpenVLA subprocess error:\n{payload}")
+        return payload
+
+    def predict(self, image_rgb, instruction):
+        return self._request("predict", image_rgb, instruction)
+
+    def reset(self):
+        self._request("reset")
+
+    def close(self):
+        if getattr(self, "_parent_conn", None) is not None:
+            try:
+                if self._proc.is_alive():
+                    self._request("close")
+            except Exception:
+                pass
+            self._parent_conn.close()
+            self._parent_conn = None
+        if getattr(self, "_proc", None) is not None:
+            self._proc.join(timeout=5)
+            if self._proc.is_alive():
+                self._proc.terminate()
+                self._proc.join(timeout=5)
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
 # ---------------------------------------------------------------------------
 # π0 (pi_zero) — Physical Intelligence
 # ---------------------------------------------------------------------------
@@ -231,9 +306,12 @@ def load_model(model_name: str, **kwargs) -> VLAModelBase:
                   e.g. device="cuda", unnorm_key="bridge_orig"
     """
     model_name = model_name.lower()
+    isolate_process = kwargs.pop("isolate_process", False)
     if model_name == "random":
         return RandomModel(**kwargs)
     elif model_name == "openvla":
+        if isolate_process:
+            return SubprocessOpenVLAModel(**kwargs)
         return OpenVLAModel(**kwargs)
     elif model_name in ("pi0", "pi_zero"):
         return Pi0Model(**kwargs)

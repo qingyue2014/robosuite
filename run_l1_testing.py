@@ -216,6 +216,8 @@ def main():
                         help="OpenVLA unnorm key (default: bridge_orig)")
     parser.add_argument("--invert_gripper", action="store_true",
                         help="Invert OpenVLA gripper action before passing to robosuite")
+    parser.add_argument("--isolate_model_process", action="store_true",
+                        help="Run OpenVLA in a subprocess to isolate Torch CUDA from MuJoCo EGL")
     parser.add_argument("--img_size",   type=int, default=224,
                         help="Camera image size fed to VLA (default: 224)")
     parser.add_argument("--video_dir", default=None,
@@ -290,6 +292,7 @@ def main():
             "device": args.device,
             "unnorm_key": args.unnorm_key,
             "invert_gripper": args.invert_gripper,
+            "isolate_process": args.isolate_model_process,
         }
     elif args.model in ("pi0", "pi_zero"):
         model_kwargs = {"device": args.device}
@@ -365,6 +368,9 @@ def main():
     if all_results:
         overall = np.mean(list(all_results.values()))
         print(f"\n  Overall L1 SVR: {overall:.3f}")
+
+    if hasattr(model, "close"):
+        model.close()
 
 
 if __name__ == "__main__":
