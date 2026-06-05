@@ -138,7 +138,7 @@ def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1
         except ImportError as exc:
             raise ImportError("Video export requires imageio. Install with `pip install imageio imageio-ffmpeg`.") from exc
         os.makedirs(os.path.dirname(video_path), exist_ok=True)
-        writer = imageio.get_writer(video_path, fps=video_fps)
+        writer = imageio.get_writer(video_path, fps=video_fps, codec="libx264", pixelformat="yuv420p")
 
     try:
         for step in range(horizon):
