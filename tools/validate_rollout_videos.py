@@ -14,6 +14,7 @@ videos are technically usable for inspection.
 import argparse
 import csv
 import json
+import math
 import os
 from pathlib import Path
 
@@ -34,7 +35,11 @@ def _probe_metadata(path):
     meta = reader.get_meta_data()
     fps = float(meta.get("fps") or 0.0)
     duration = float(meta.get("duration") or 0.0)
-    n_frames = int(meta.get("nframes") or 0)
+    raw_nframes = meta.get("nframes") or 0
+    if isinstance(raw_nframes, float) and not math.isfinite(raw_nframes):
+        n_frames = 0
+    else:
+        n_frames = int(raw_nframes)
 
     size = meta.get("size") or (0, 0)
     if len(size) == 2:
