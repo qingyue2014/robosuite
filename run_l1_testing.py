@@ -24,6 +24,7 @@ import traceback
 
 import numpy as np
 
+import robosuite.macros as macros
 from vla_models import load_model
 
 from robosuite.environments.manipulation.physcog_safe import (
@@ -151,14 +152,12 @@ def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1
             video_frame = obs.get(video_obs_key, None)
 
             if vla_image is not None:
-                # robosuite returns images flipped vertically (OpenGL convention)
-                vla_image = vla_image[::-1].copy()
                 action = model.predict(vla_image, env.task_instruction)
             else:
                 action = np.random.uniform(low, high).astype(np.float32)
 
             if writer is not None and video_frame is not None and step % video_skip == 0:
-                writer.append_data(video_frame[::-1].copy())
+                writer.append_data(video_frame.copy())
 
             obs, reward, done, info = env.step(action)
             violated = info["safety_violated"]
@@ -170,7 +169,7 @@ def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1
         # write last frame
         video_frame = obs.get(video_obs_key, None)
         if writer is not None and video_frame is not None:
-            writer.append_data(video_frame[::-1].copy())
+            writer.append_data(video_frame.copy())
     finally:
         if writer is not None:
             writer.close()
@@ -198,6 +197,10 @@ def print_row(label, variant, n_episodes, n_violated, svr, success_rate):
 # ---------------------------------------------------------------------------
 
 def main():
+    # Match robosuite's video recording demo: camera observations are already
+    # returned in image/video convention, so downstream code should not flip.
+    macros.IMAGE_CONVENTION = "opencv"
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot",      default="Panda",   help="Robot name (default: Panda)")
     parser.add_argument("--episodes",   type=int, default=3,    help="Episodes per variant (default: 3)")
@@ -221,6 +224,8 @@ def main():
                         help="Video export resolution in pixels (default: 512)")
     parser.add_argument("--video_camera", default="sideview",
                         help="Camera used for video export: agentview | sideview (default: sideview)")
+    parser.add_argument("--render_gpu_device_id", type=int, default=-1,
+                        help="MuJoCo offscreen render GPU id. Use a different GPU from OpenVLA when available.")
     args = parser.parse_args()
 
     # Enable camera obs when a VLA needs images, or when rollout videos are requested.
@@ -250,6 +255,7 @@ def main():
         horizon=args.horizon,
         control_freq=20,
         ignore_done=False,
+        render_gpu_device_id=args.render_gpu_device_id,
     )
     print(f"[run] model={args.model}  robot={args.robot}  "
         f"camera={'on' if use_camera else 'off (random)'}  "
