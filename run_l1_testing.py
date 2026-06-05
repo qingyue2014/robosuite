@@ -18,6 +18,8 @@ Usage:
 """
 
 import argparse
+import os
+import re
 import traceback
 
 import numpy as np
@@ -110,7 +112,11 @@ L1_SUITE = [
 # Helpers
 # ---------------------------------------------------------------------------
 
-def run_episode(env, horizon, model):
+def _safe_filename(text):
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("_")
+
+
+def run_episode(env, horizon, model, video_path=None, video_fps=20, video_skip=1):
     """
     Run one episode using the given model.
     Returns (safety_violated, violation_reasons, success).
@@ -124,25 +130,45 @@ def run_episode(env, horizon, model):
     violated = False
     reasons = []
     success = False
+    writer = None
 
-    for _ in range(horizon):
+    if video_path is not None:
+        try:
+            import imageio
+        except ImportError as exc:
+            raise ImportError("Video export requires imageio. Install with `pip install imageio imageio-ffmpeg`.") from exc
+        os.makedirs(os.path.dirname(video_path), exist_ok=True)
+        writer = imageio.get_writer(video_path, fps=video_fps)
+
+    try:
+        for step in range(horizon):
+            # Get image observation (agentview camera, shape H×W×3 uint8)
+            image = obs.get("agentview_image", None)
+
+            if image is not None:
+                # robosuite returns images flipped vertically (OpenGL convention)
+                image = image[::-1].copy()
+                if writer is not None and step % video_skip == 0:
+                    writer.append_data(image)
+                action = model.predict(image, env.task_instruction)
+            else:
+                # No camera obs available — fall back to random
+                action = np.random.uniform(low, high).astype(np.float32)
+
+            obs, reward, done, info = env.step(action)
+            violated = info["safety_violated"]
+            reasons = info["violation_reasons"]
+            success = env._check_success()
+            if done:
+                break
+
         # Get image observation (agentview camera, shape H×W×3 uint8)
         image = obs.get("agentview_image", None)
-
-        if image is not None:
-            # robosuite returns images flipped vertically (OpenGL convention)
-            image = image[::-1].copy()
-            action = model.predict(image, env.task_instruction)
-        else:
-            # No camera obs available — fall back to random
-            action = np.random.uniform(low, high).astype(np.float32)
-
-        obs, reward, done, info = env.step(action)
-        violated = info["safety_violated"]
-        reasons = info["violation_reasons"]
-        success = env._check_success()
-        if done:
-            break
+        if writer is not None and image is not None:
+            writer.append_data(image[::-1].copy())
+    finally:
+        if writer is not None:
+            writer.close()
 
     return violated, reasons, success
 
@@ -180,6 +206,12 @@ def main():
                         help="Invert OpenVLA gripper action before passing to robosuite")
     parser.add_argument("--img_size",   type=int, default=224,
                         help="Camera image size fed to VLA (default: 224)")
+    parser.add_argument("--video_dir", default=None,
+                        help="Directory for per-episode MP4 exports")
+    parser.add_argument("--video_fps", type=int, default=20,
+                        help="Video export FPS (default: 20)")
+    parser.add_argument("--video_skip", type=int, default=1,
+                        help="Save every Nth frame when exporting video (default: 1)")
     args = parser.parse_args()
 
     # Load model once; shared across all variants
@@ -194,8 +226,8 @@ def main():
         model_kwargs = {"device": args.device}
     model = load_model(args.model, **model_kwargs)
 
-    # Enable camera obs only when a real VLA model is used
-    use_camera = args.model != "random"
+    # Enable camera obs when a VLA needs images, or when rollout videos are requested.
+    use_camera = args.model != "random" or args.video_dir is not None
     common_kwargs = dict(
         robots=args.robot,
         has_renderer=False,
@@ -209,8 +241,10 @@ def main():
         ignore_done=False,
     )
     print(f"[run] model={args.model}  robot={args.robot}  "
-          f"camera={'on' if use_camera else 'off (random)'}  "
+        f"camera={'on' if use_camera else 'off (random)'}  "
           f"episodes={args.episodes}  horizon={args.horizon}")
+    if args.video_dir is not None:
+        print(f"[run] saving videos to {args.video_dir}")
 
     suite = [e for e in L1_SUITE if args.env is None or e["cls"].__name__ == args.env]
     if not suite:
@@ -234,7 +268,20 @@ def main():
             try:
                 env = EnvClass(**common_kwargs, **variant)
                 for ep in range(args.episodes):
-                    violated, reasons, success = run_episode(env, args.horizon, model)
+                    video_path = None
+                    if args.video_dir is not None:
+                        variant_str = "_".join(f"{k}-{v}" for k, v in variant.items())
+                        video_name = _safe_filename(f"{EnvClass.__name__}_{variant_str}_ep{ep:03d}.mp4")
+                        video_path = os.path.join(args.video_dir, video_name)
+
+                    violated, reasons, success = run_episode(
+                        env,
+                        args.horizon,
+                        model,
+                        video_path=video_path,
+                        video_fps=args.video_fps,
+                        video_skip=args.video_skip,
+                    )
                     if violated:
                         n_violated += 1
                     if success:

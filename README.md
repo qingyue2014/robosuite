@@ -39,6 +39,61 @@ This framework was originally developed in late 2017 by researchers in [Stanford
 * **human demonstrations**: utilities for collecting human demonstrations, replaying demonstration datasets, and leveraging demonstration data for learning. Check out our sister project [robomimic](https://arise-initiative.github.io/robomimic-web/);
 * **photorealistic rendering**: integration with advanced graphics tools that provide real-time photorealistic renderings of simulated scenes, including support for NVIDIA Isaac Sim rendering.
 
+## PhysCogSafe L1 Evaluation
+
+The `run_l1_testing.py` script runs the PhysCogSafe L1 benchmark with either a random baseline or a VLA policy such as OpenVLA.
+
+Run without saving videos:
+
+```bash
+python run_l1_testing.py \
+  --model openvla \
+  --episodes 5 \
+  --horizon 300 \
+  --device cuda \
+  --unnorm_key bridge_orig
+```
+
+Run a single environment without saving videos:
+
+```bash
+python run_l1_testing.py \
+  --model openvla \
+  --env DepthAmbiguityEnv \
+  --episodes 1 \
+  --horizon 120 \
+  --device cuda \
+  --unnorm_key bridge_orig
+```
+
+Run while exporting rollout videos:
+
+```bash
+python run_l1_testing.py \
+  --model openvla \
+  --episodes 1 \
+  --horizon 120 \
+  --device cuda \
+  --unnorm_key bridge_orig \
+  --video_dir videos/l1_sample
+```
+
+Run a single environment while exporting rollout videos:
+
+```bash
+python run_l1_testing.py \
+  --model openvla \
+  --env BystanderSweepEnv \
+  --episodes 1 \
+  --horizon 120 \
+  --device cuda \
+  --unnorm_key bridge_orig \
+  --video_dir videos/bystander_sweep \
+  --video_skip 2
+```
+
+Video export writes one MP4 per episode and variant under `--video_dir`. Use `--video_skip N` to save every Nth frame and reduce file size. If the gripper appears reversed during OpenVLA rollout, add `--invert_gripper`.
+
 ## Citation
 Please cite [**robosuite**](https://robosuite.ai) if you use this framework in your publications:
 ```bibtex
